@@ -1,0 +1,44 @@
+Explanation:
+
+#!/usr/bin/vcli: Specifies the vCLI interpreter.
+Variable Definitions:
+$esxi_host, $esxi_user, $esxi_password: Your ESXi host connection details.
+$vm_name: The name of the virtual machine you want to assign the vGPU to. Make sure this name is exact.
+$vgpu_profile: The name of the vGPU profile you want to assign. This profile must exist on your ESXi host.
+Connect to ESXi: Establishes a connection to the ESXi host using the provided credentials.
+Get Target VM:
+get-vm --name $vm_name: Retrieves the virtual machine object based on the provided name.
+Error handling: Checks if the VM was found. If not, it displays an error message and exits.
+Check vGPU Profile:
+get-vgpuprofile --host $esxi_host: Lists the available vGPU profiles on the connected ESXi host.
+where {$_.Name -eq $vgpu_profile}: Filters the list to find the profile matching the $vgpu_profile variable.
+Error handling: Checks if the specified vGPU profile exists. If not, it displays an error message with a list of available profiles and exits.
+Configure vGPU:
+try...catch block: This is used for error handling during the vGPU configuration process.
+Check for Existing vGPU Device:
+get-vmhardware --vm $vm | where {$_.DeviceInfo.Label -like "Virtual Shared Graphics Adapter"}: Checks if a "Virtual Shared Graphics Adapter" (the vGPU device) already exists on the VM.
+if (!$pci_devices): If no vGPU device is found, it proceeds to add one.
+new-vmhardware --vm $vm --device "VirtualPCI": Adds a new virtual PCI device to the VM. This is often a prerequisite for adding a vGPU.
+$vm = get-vm --name $vm_name: Re-fetches the VM object to ensure the newly added hardware is reflected.
+Find the vGPU Device:
+get-vmhardware --vm $vm | where {$_.DeviceInfo.Label -like "Virtual Shared Graphics Adapter"} | select-object -last 1: Retrieves the "Virtual Shared Graphics Adapter" device. If multiple exist for some reason, it selects the last one (assuming the most recently added).
+Assign vGPU Profile:
+set-vmhardware --vm $vm --device $vgpu_device --vgpuProfile $target_profile: This is the core command that assigns the specified $target_profile to the identified vGPU device on the VM.
+Success message: If the assignment is successful, a confirmation message is displayed.
+Error handling: If the vGPU device cannot be found, an error message is displayed.
+catch block: If any error occurs within the try block, the error message is displayed, and the script exits.
+Disconnect from ESXi: Closes the connection to the ESXi host.
+Before Running the Script:
+
+Install vCLI: Ensure vCLI is installed on your system.
+Replace Placeholders: Update the $esxi_host, $esxi_user, $esxi_password, $vm_name, and $vgpu_profile variables with your actual values.
+Verify vGPU Profile: Make sure the vGPU profile name you specify ($vgpu_profile) exists on your ESXi host. You can use the command get-vgpuprofile --host your_esxi_host_ip_or_hostname to list the available profiles.
+VM Power State: The VM might need to be powered off before you can assign or modify its vGPU configuration. Consider adding logic to check the power state and potentially power it off and on again within the script (with appropriate warnings and user confirmation if needed).
+Licensing: Ensure you have the necessary NVIDIA vGPU software licenses configured in your vSphere environment.
+vSphere Version: This script assumes a vSphere version that supports vGPU management through vCLI.
+How to Run the Script:
+
+Save the script to a file (e.g., assign_vgpu.vcli).
+Make the script executable (if necessary): chmod +x assign_vgpu.vcli.
+Run the script from your terminal: ./assign_vgpu.vcli.
+Remember to exercise caution when modifying VM hardware configurations. It's always a good practice to test such scripts in a non-production environment first.
