@@ -1,0 +1,111 @@
+#!/usr/bin/vcli
+
+# Define the ESXi host and credentials
+$esxi_host = "your_esxi_host_ip_or_hostname"
+$esxi_user = "your_esxi_username"
+$esxi_password = "your_esxi_password"
+$output_file = "vm_performance_report.html"
+
+# Function to generate HTML header
+function GenerateHTMLHeader {
+    param($title)
+    @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title</title>
+    <style>
+        body { font-family: sans-serif; }
+        h1 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>VM Performance Report - $($esxi_host)</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>VM Name</th>
+                <th>CPU Usage (%)</th>
+                <th>Memory Usage (GB)</th>
+                <th>Disk Read Latency (ms)</th>
+                <th>Disk Write Latency (ms)</th>
+                <th>Network Received (KBps)</th>
+                <th>Network Transmitted (KBps)</th>
+            </tr>
+        </thead>
+        <tbody>
+"@
+}
+
+# Function to generate HTML footer
+function GenerateHTMLFooter {
+    @"
+        </tbody>
+    </table>
+</body>
+</html>
+"@
+}
+
+# Connect to the ESXi host
+connect --server $esxi_host --username $esxi_user --password $esxi_password
+
+# Get a list of all virtual machines
+$vms = getvms
+
+# Start building the HTML content
+$html_content = GenerateHTMLHeader -title "VM Performance Report"
+
+# Loop through each virtual machine and collect performance metrics
+foreach ($vm in $vms) {
+    $vm_name = $vm.Name
+
+    # Get CPU usage (%)
+    $cpu_usage = get-vmperformance --entity $vm --metric cpu.usage.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+
+    # Get Memory usage (GB)
+    $mem_usage_mb = get-vmperformance --entity $vm --metric mem.usage.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+    $mem_usage_gb = ($mem_usage_mb / 1024)
+
+    # Get Disk read latency (ms)
+    $disk_read_latency = get-vmperformance --entity $vm --metric disk.readLatency.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+
+    # Get Disk write latency (ms)
+    $disk_write_latency = get-vmperformance --entity $vm --metric disk.writeLatency.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+
+    # Get Network received (KBps)
+    $net_received = get-vmperformance --entity $vm --metric net.received.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+
+    # Get Network transmitted (KBps)
+    $net_transmitted = get-vmperformance --entity $vm --metric net.transmitted.average --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1
+
+    # Append VM performance data as a table row
+    $html_content += @"
+            <tr>
+                <td>$vm_name</td>
+                <td>$cpu_usage</td>
+                <td>$mem_usage_gb</td>
+                <td>$disk_read_latency</td>
+                <td>$disk_write_latency</td>
+                <td>$net_received</td>
+                <td>$net_transmitted</td>
+            </tr>
+"@
+}
+
+# Add the HTML footer
+$html_content += GenerateHTMLFooter
+
+# Write the HTML content to the output file
+$html_content | out-file $output_file
+
+echo "Performance report saved to $($output_file)"
+
+# Disconnect from the ESXi host
+disconnect
