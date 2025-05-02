@@ -1,0 +1,14 @@
+# Using command line arguments
+./analyze_logs.ps1 -EsxiHost "192.168.1.100" `
+                 -EsxiUsername "admin" `
+                 -EsxiPassword "your_password" `
+                 -AnalysisTimeframeMinutes 30 `
+                 -LogFiles @("/var/log/vmkernel.log", "/var/log/vpxa.log") `
+                 -ErrorPatterns @("error", "warning", "timeout")
+
+# Using PowerShell parameters
+./analyze_logs.ps1 `
+    -EsxiHost "192.168.1.100" `
+    -EsxiUsername "admin" `
+    -EsxiPassword (Get-Credential).Password `
+    -AnalysisTimeframeMinutes 30
