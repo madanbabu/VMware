@@ -1,0 +1,130 @@
+#!/usr/bin/vcli
+
+# Define parameters with clear documentation
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$EsxiHost,
+    
+    [Parameter(Mandatory=$true)]
+    [string]$EsxiUsername,
+    
+    [Parameter(Mandatory=$true)]
+    [securestring]$EsxiPassword,
+    
+    [Parameter(Mandatory=$false)]
+    [int]$AnalysisTimeframeMinutes = 60,
+    
+    [Parameter(Mandatory=$false)]
+    [string[]]$LogFiles = @(
+        "/var/log/vmkernel.log",
+        "/var/log/vpxa.log",
+        "/var/log/hostd.log"
+    ),
+    
+    [Parameter(Mandatory=$false)]
+    [string[]]$ErrorPatterns = @(
+        "error",
+        "alert",
+        "warning",
+        "timeout",
+        "congestion",
+        "latency",
+        "dropped",
+        "failed",
+        "slow",
+        "resource shortage",
+        "out of memory",
+        "high CPU utilization",
+        "excessive IOPS",
+        "queue full",
+        "not responding"
+    )
+)
+
+# Function to handle connection errors gracefully
+function Connect-Esx {
+    param($host, $username, $password)
+    try {
+        connect --server $host --username $username --password (ConvertTo-SecureString -String $password -AsPlainText -Force) | Out-Null
+        return $true
+    }
+    catch {
+        Write-Error "Connection failed to ESXi host '$host': $_"
+        return $false
+    }
+}
+
+# Function to get the current timestamp in ESXi log format
+function Get-ESXiTimestamp {
+    $now = Get-Date
+    return ($now).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+}
+
+# Function to analyze a single log file with enhanced error handling
+function Analyze-ESXiLog {
+    param(
+        [string]$log_file,
+        [int]$timeframe,
+        [string[]]$patterns
+    )
+
+    Write-Host "Analyzing log file: $log_file" -ForegroundColor Cyan
+
+    # Construct the command to tail the log file based on the timeframe
+    $start_time = (Get-Date).AddMinutes(-$timeframe).ToString("yyyy-MM-ddTHH:mm:ss")
+    $tail_command = "tail -n 1000 $log_file | grep -iE '$($patterns -join "|")'"
+
+    try {
+        $log_entries = invoke-ssh -host $EsxiHost -username $EsxiUsername -password (ConvertTo-SecureString -String $EsxiPassword -AsPlainText -Force) -command $tail_command
+        
+        if ($log_entries) {
+            Write-Host "  Potential performance degradation indicators found in $log_file:" -ForegroundColor Yellow
+            Write-Host "  $log_entries" -ForegroundColor Yellow
+        } else {
+            Write-Host "  No potential performance degradation indicators found in $log_file within the analyzed timeframe." -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "  Error accessing or analyzing log file '$log_file': $_" -ForegroundColor Red
+    }
+    Write-Host "-------------------------" -ForegroundColor Gray
+}
+
+# Main script execution
+try {
+    # Attempt connection with retry mechanism
+    $maxRetries = 3
+    $retryDelay = 5
+    
+    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+        if (Connect-Esx -host $EsxiHost -username $EsxiUsername -password (ConvertTo-SecureString -String $EsxiPassword -AsPlainText -Force)) {
+            break
+        }
+        
+        if ($attempt -lt $maxRetries) {
+            Start-Sleep -Seconds $retryDelay
+            Write-Host "Retry attempt $attempt/$maxRetries..." -ForegroundColor Yellow
+        }
+    }
+
+    if ($attempt -gt $maxRetries) {
+        throw "Failed to connect after $maxRetries attempts"
+    }
+
+    Write-Host "Successfully connected to ESXi host: $EsxiHost" -ForegroundColor Green
+
+    # Analyze each specified log file
+    foreach ($file in $LogFiles) {
+        Analyze-ESXiLog -log_file $file -timeframe $AnalysisTimeframeMinutes -patterns $ErrorPatterns
+    }
+
+    # Disconnect from the ESXi host
+    disconnect
+    Write-Host "Log analysis complete." -ForegroundColor Green
+} catch {
+    Write-Host "Error during log analysis: $_" -ForegroundColor Red
+    exit 1
+} finally {
+    if ($connected) {
+        disconnect
+    }
+}
