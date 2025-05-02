@@ -32,3 +32,31 @@ Save the script to a file (e.g., check_vm_performance.vcli).
 Make the script executable (if necessary): chmod +x check_vm_performance.vcli.
 Run the script from your terminal: ./check_vm_performance.vcli.
 The script will connect to your ESXi host, iterate through each VM, and display the current CPU usage, memory usage, disk read/write latency, and network receive/transmit rates for each.
+
+
+
+Changes Made:
+
+$output_file = "vm_performance_report.html": Defines the name of the HTML output file.
+GenerateHTMLHeader Function:
+Takes a $title as input.
+Generates the basic HTML structure (<!DOCTYPE html>, <html>, <head>, <body>).
+Includes basic CSS styling for better readability (you can customize this further).
+Creates the table header row (<th>) with appropriate column names.
+GenerateHTMLFooter Function:
+Generates the closing HTML tags (</tbody>, </table>, </body>, </html>).
+HTML Content Building:
+$html_content = GenerateHTMLHeader -title "VM Performance Report": Initializes the $html_content variable with the HTML header.
+Inside the foreach loop:
+The performance metrics are retrieved as before.
+An HTML table row (<tr>) is dynamically created for each VM, with each metric placed in a table data cell (<td>).
+$html_content += @"..."@: Appends the generated table row to the $html_content.
+$html_content += GenerateHTMLFooter: Appends the HTML footer to the $html_content.
+$html_content | out-file $output_file: This command writes the entire HTML content stored in the $html_content variable to the specified $output_file.
+echo "Performance report saved to $($output_file)": Informs the user where the report has been saved.
+How to Run the Updated Script:
+
+Save the updated script to a file (e.g., generate_vm_report.vcli).
+Make the script executable (if necessary): chmod +x generate_vm_report.vcli.
+Run the script from your terminal: ./generate_vm_report.vcli.
+After the script finishes, an HTML file named vm_performance_report.html will be created in the same directory where you ran the script. You can then open this file in any web browser to view the formatted performance report.
