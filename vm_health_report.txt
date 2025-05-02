@@ -1,0 +1,34 @@
+Explanation:
+
+#!/usr/bin/vcli: This shebang line specifies that the script should be executed with the vcli interpreter.
+# Define the ESXi host and credentials: These lines are comments to remind you to replace the placeholder values with your actual ESXi host details.
+$esxi_host = "your_esxi_host_ip_or_hostname": Stores the IP address or hostname of your ESXi host in the $esxi_host variable.
+$esxi_user = "your_esxi_username": Stores the username for connecting to the ESXi host.
+$esxi_password = "your_esxi_password": Stores the password for connecting to the ESXi host.
+connect --server $esxi_host --username $esxi_user --password $esxi_password: This command establishes a connection to the specified ESXi host using the provided credentials.
+$vms = getvms: This command retrieves a list of all virtual machines running on the connected ESXi host and stores them in the $vms variable.
+foreach ($vm in $vms): This loop iterates through each virtual machine object in the $vms list.
+echo "Checking performance for VM: $($vm.Name)": This line prints the name of the current virtual machine being checked.
+get-vmperformance --entity $vm --metric <metric_name> --interval 20 --samples 1 | select-object -expandproperty Value | select-object -last 1: This is the core command to retrieve performance data for a specific metric:
+get-vmperformance --entity $vm: Specifies the virtual machine for which to retrieve performance data.
+--metric <metric_name>: Defines the specific performance counter you want to collect (e.g., cpu.usage.average, mem.usage.average, disk.readLatency.average, net.received.average). You might need to adjust these metric names based on the specific performance aspects you are interested in. You can use get-counter --entity $vm to explore available performance counters for a VM.
+--interval 20: Sets the collection interval to 20 seconds.
+--samples 1: Retrieves only the latest performance sample.
+| select-object -expandproperty Value: Extracts the Value property from the performance data object.
+| select-object -last 1: Selects the last (and in this case, the only) value.
+echo " CPU Usage (Average): $($cpu_usage) %": Prints the retrieved CPU usage.
+Similar lines for Memory, Disk Latency (Read and Write), and Network Throughput (Received and Transmitted): These lines retrieve and display the respective performance metrics. Note the conversion of memory usage from MB to GB. Remember to adjust the --metric parameter in these lines if you need different disk or network performance counters.
+echo "-------------------------": Prints a separator line between the performance data of different VMs.
+disconnect: This command closes the connection to the ESXi host.
+Before running this script:
+
+Install vCLI: Ensure that VMware vSphere Command-Line Interface (vCLI) is installed on the machine where you will run this script.
+Replace Placeholders: Update the $esxi_host, $esxi_user, and $esxi_password variables with your actual ESXi host details.
+Adjust Metrics (if needed): The script includes common performance metrics. If you need to monitor other aspects (e.g., specific disk I/O counters, network packet loss), use the get-counter --entity $vm command within the loop to explore available counters and modify the --metric parameter accordingly.
+Permissions: Ensure the user account you are using to connect to the ESXi host has the necessary permissions to view performance data for the virtual machines.
+How to run the script:
+
+Save the script to a file (e.g., check_vm_performance.vcli).
+Make the script executable (if necessary): chmod +x check_vm_performance.vcli.
+Run the script from your terminal: ./check_vm_performance.vcli.
+The script will connect to your ESXi host, iterate through each VM, and display the current CPU usage, memory usage, disk read/write latency, and network receive/transmit rates for each.
