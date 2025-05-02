@@ -1,0 +1,87 @@
+#!/usr/bin/vcli
+
+# Define variables
+ESXI_HOST="your_esxi_host_ip_or_hostname"
+ESXI_USER="your_esxi_username"
+ESXI_PASSWORD="your_esxi_password"
+VM_NAME="your_target_vm_name"
+VGPU_PROFILE="your_desired_vgpu_profile_name"
+
+# Function to handle connection errors
+connect_esxi() {
+    local max_retries=3
+    local retry_delay=5
+    local attempt=1
+    
+    while [ $attempt -le $max_retries ]; do
+        if connect --server "$ESXI_HOST" --username "$ESXI_USER" --password "$ESXI_PASSWORD"; then
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_retries ]; then
+            echo "Retry attempt $attempt/$max_retries..."
+            sleep $retry_delay
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    echo "Connection failed after $max_retries attempts"
+    return 1
+}
+
+# Main script
+if ! connect_esxi; then
+    exit 1
+fi
+
+# Get VM and validate
+VM=$(get-vm --name "$VM_NAME")
+if [ -z "$VM" ]; then
+    echo "Error: Virtual machine '$VM_NAME' not found"
+    disconnect
+    exit 1
+fi
+
+# Check vGPU profile
+VGPU_PROFILES=$(get-vgpuprofile --host "$ESXI_HOST")
+TARGET_PROFILE=$(echo "$VGPU_PROFILES" | grep -w "$VGPU_PROFILE")
+
+if [ -z "$TARGET_PROFILE" ]; then
+    echo "Error: vGPU profile '$VGPU_PROFILE' not found on host '$ESXI_HOST'"
+    echo "Available vGPU profiles:"
+    echo "$VGPU_PROFILES" | grep -o "^[^ ]*"
+    disconnect
+    exit 1
+fi
+
+# Configure vGPU
+PCI_DEVICES=$(get-vmhardware --vm "$VM" | grep "Virtual Shared Graphics Adapter")
+
+if [ -z "$PCI_DEVICES" ]; then
+    echo "Adding Virtual PCI device for vGPU..."
+    new-vmhardware --vm "$VM" --device "VirtualPCI"
+    VM=$(get-vm --name "$VM_NAME")
+    
+    PCI_DEVICES=$(get-vmhardware --vm "$VM" | grep "Virtual Shared Graphics Adapter")
+    if [ -z "$PCI_DEVICES" ]; then
+        echo "Error: Failed to add Virtual PCI device"
+        disconnect
+        exit 1
+    fi
+fi
+
+VGPU_DEVICE=$(echo "$PCI_DEVICES" | tail -n 1)
+
+if [ -n "$VGPU_DEVICE" ]; then
+    echo "Setting vGPU profile '$VGPU_PROFILE' on VM '$VM_NAME'..."
+    set-vmhardware --vm "$VM" --device "$VGPU_DEVICE" --vgpuProfile "$TARGET_PROFILE"
+    echo "Successfully configured vGPU for VM '$VM_NAME'"
+else
+    echo "Error: Could not find the Virtual Shared Graphics Adapter device"
+    disconnect
+    exit 1
+fi
+
+# Disconnect from ESXi host
+disconnect
